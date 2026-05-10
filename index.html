@@ -11,7 +11,7 @@ body { font-family: Arial; padding:20px; }
 
 .row {
   display:flex;
-  justify-content:space-between;
+  justify-content:space-between; 
   align-items:center;
   border-bottom:1px solid #ccc;
   padding:6px 0;
@@ -21,20 +21,40 @@ body { font-family: Arial; padding:20px; }
 .center { width:30%; text-align:center; }
 .right { width:30%; text-align:right; }
 
-.task { margin-bottom:8px; }
+.task {
+  display: grid;
+  grid-template-columns:
+    30px
+    220px
+    70px
+    70px
+    180px   /* plus large */
+    100px   /* input + espace */
+    50px    /* bouton + */
+    160px;  /* date plus large */
 
-/* 🔥 FIX PDF */
-@media print {
-  body { zoom:0.75; }
+  align-items: center;
+  gap: 16px; /* */
+  margin-bottom: 16px;
+}}
 
-  .row {
-    display:flex !important;
-    flex-direction:row !important;
-  }
+.task button {
+  padding: 4px;
+}
 
-  div {
-    page-break-inside: avoid;
-  }
+.task input[type="number"] {
+  width: 60px;
+}
+
+.task select {
+  width: 170px;
+}
+
+.task input[type="date"] {
+  width: 120px;
+}
+.task {
+  gap: 18px;
 }
 </style>
 </head>
@@ -56,19 +76,31 @@ Chargé de projet:
 Téléphone: <input id="telephone"><br>
 
 Franchise:
-<select id="franchise">
-<option>Oui</option><option>Non</option>
-</select>
+<select id="franchise"><option>Oui</option><option>Non</option></select>
 
 Cadenas:
-<select id="cadenas">
-<option>Oui</option><option>Non</option>
-</select>
+<select id="cadenas"><option>Oui</option><option>Non</option></select>
 </div>
 
 Date début: <input type="date" id="startDate"><br><br>
 
 <h3>Corps de métier</h3>
+
+<div style="
+  display:grid;
+  grid-template-columns: 30px 220px 70px 70px 170px 80px 40px 140px;
+  font-weight:bold;
+  margin-bottom:10px;
+">
+  <div></div>
+  <div>Tâche</div>
+  <div></div>
+  <div>Jours</div>
+  <div>Sous-traitant</div>
+  <div></div>
+  <div></div>
+  <div>Date</div>
+</div>
 
 <div id="tasks"></div>
 
@@ -115,11 +147,33 @@ function formatRange(s,e){
   return s.getDate()+" au "+e.getDate()+" "+formatDate(e).split(" ")[1];
 }
 
-function isWeekend(d){ return d.getDay()==0||d.getDay()==6; }
+// ===== CCQ =====
+function isHoliday(d){
+  const holidays = [
+    "2026-05-18","2026-06-24","2026-07-01",
+    "2026-09-07","2026-10-12"
+  ];
+  return holidays.includes(d.toISOString().split("T")[0]);
+}
+
+function isConstructionHoliday(d){
+  let summerStart = new Date("2026-07-19");
+  let summerEnd = new Date("2026-08-01");
+
+  let winterStart = new Date("2026-12-20");
+  let winterEnd = new Date("2027-01-02");
+
+  return (d >= summerStart && d <= summerEnd) ||
+         (d >= winterStart && d <= winterEnd);
+}
+
+function isBlocked(d){
+  return d.getDay()==0 || d.getDay()==6 || isHoliday(d) || isConstructionHoliday(d);
+}
 
 function nextWorkingDay(d){
   let date=new Date(d);
-  while(isWeekend(date)){ date.setDate(date.getDate()+1); }
+  while(isBlocked(date)){ date.setDate(date.getDate()+1); }
   return date;
 }
 
@@ -148,39 +202,101 @@ let taskList = [...baseTasks, ...savedTasks];
 const container=document.getElementById("tasks");
 
 function renderTasks(){
-  container.innerHTML="";
+  container.innerHTML = "";
 
   taskList.forEach((t,i)=>{
-
     let teamOptions = t.teams.map(x=>`<option>${x}</option>`).join("");
 
-    container.innerHTML+=`
+    let html = `
     <div class="task">
+
       <input type="checkbox" id="check-${i}" checked>
-      ${t.name}
-      <input type="number" id="days-${i}" value="${t.days}" style="width:50px;">
-      <select id="team-${i}">
-        ${teamOptions}
-      </select>
-      <input id="newTeam-${i}" placeholder="+">
-      <button onclick="addTeam(${i})">+</button>
-    </div>`;
+
+      <div>${t.name}</div>
+
+      <div>
+        <button onclick="moveUp(${i})">🔼</button>
+        <button onclick="moveDown(${i})">🔽</button>
+      </div>
+
+      <input type="number" id="days-${i}" value="${t.days}">
+
+<div>
+  <select id="team-${i}">
+    ${teamOptions}
+  </select>
+
+  <input id="newTeam-${i}" placeholder="Ajouter" style="width:70px;">
+
+  <button onclick="addTeam(${i})">+</button>
+</div>
+
+      <input type="date" id="fixed-${i}">
+
+    </div>
+    `;
+
+    container.innerHTML += html;
   });
 }
+
 renderTasks();
 
-// ===== ADD TEAM =====
-function addTeam(i){
-  let input=document.getElementById(`newTeam-${i}`);
-  let select=document.getElementById(`team-${i}`);
+// ===== SAVE / RESTORE =====
+function getCurrentValues(){
+  let values = [];
+  taskList.forEach((t,i)=>{
+    values.push({
+      checked: document.getElementById(`check-${i}`)?.checked,
+      days: document.getElementById(`days-${i}`)?.value,
+      team: document.getElementById(`team-${i}`)?.value,
+      fixed: document.getElementById(`fixed-${i}`)?.value
+    });
+  });
+  return values;
+}
 
-  let val=input.value.trim();
+function restoreValues(values){
+  values.forEach((v,i)=>{
+    if(!v) return;
+    if(document.getElementById(`check-${i}`))
+      document.getElementById(`check-${i}`).checked = v.checked;
+    if(document.getElementById(`days-${i}`))
+      document.getElementById(`days-${i}`).value = v.days;
+    if(document.getElementById(`team-${i}`))
+      document.getElementById(`team-${i}`).value = v.team;
+    if(document.getElementById(`fixed-${i}`))
+      document.getElementById(`fixed-${i}`).value = v.fixed;
+  });
+}
+
+// ===== MOVE =====
+function moveUp(i){
+  if(i === 0) return;
+  let values = getCurrentValues();
+  [taskList[i], taskList[i-1]] = [taskList[i-1], taskList[i]];
+  renderTasks();
+  restoreValues(values);
+}
+
+function moveDown(i){
+  if(i === taskList.length - 1) return;
+  let values = getCurrentValues();
+  [taskList[i], taskList[i+1]] = [taskList[i+1], taskList[i]];
+  renderTasks();
+  restoreValues(values);
+}
+function addTeam(i){
+  let select = document.getElementById(`team-${i}`);
+  let val = prompt("Nom du sous-traitant ?");
+
   if(val){
-    let option=document.createElement("option");
-    option.text=val;
+    let option = document.createElement("option");
+    option.text = val;
     select.add(option);
-    select.value=val;
-    input.value="";
+    select.value = val;
+
+    taskList[i].teams.push(val);
   }
 }
 
@@ -188,12 +304,10 @@ function addTeam(i){
 function addTask(){
   let name=newTaskName.value.trim();
   let days=parseInt(newTaskDays.value);
-
   if(!name || !days) return;
 
   let newT={name:name,days:days,teams:[]};
   savedTasks.push(newT);
-
   localStorage.setItem("customTasks", JSON.stringify(savedTasks));
 
   taskList.push(newT);
@@ -203,10 +317,19 @@ function addTask(){
   newTaskDays.value="";
 }
 
-// ===== GÉNÉRER =====
 function generateSchedule(){
 
-  let current=nextWorkingDay(new Date(startDate.value+"T00:00:00"));
+  let pivotIndex = -1;
+  let pivotDate = null;
+
+  taskList.forEach((t,i)=>{
+    if(!document.getElementById(`check-${i}`).checked) return;
+    let fixed = document.getElementById(`fixed-${i}`).value;
+    if(fixed && pivotIndex === -1){
+      pivotIndex = i;
+      pivotDate = new Date(fixed+"T00:00:00");
+    }
+  });
 
   let html=`<div id="pdfContent">`;
 
@@ -224,33 +347,111 @@ function generateSchedule(){
   <b>Cadenas:</b> ${cadenas.value}<br><br>
   `;
 
-  taskList.forEach((t,i)=>{
-    if(!document.getElementById(`check-${i}`).checked) return;
+  if(pivotIndex === -1){
+    let current=nextWorkingDay(new Date(startDate.value+"T00:00:00"));
+
+    taskList.forEach((t,i)=>{
+      if(!document.getElementById(`check-${i}`).checked) return;
+
+      let d=parseInt(document.getElementById(`days-${i}`).value);
+      let team=document.getElementById(`team-${i}`).value;
+
+      let s=new Date(current);
+      let e=new Date(current);
+      let c=0;
+
+      while(c<d){
+        if(!isBlocked(e)) c++;
+        if(c<d) e.setDate(e.getDate()+1);
+      }
+
+      html+=`
+      <div class="row">
+        <div class="left">${t.name}</div>
+        <div class="center">${formatRange(s,e)}</div>
+        <div class="right">${team}</div>
+      </div>`;
+
+      e.setDate(e.getDate()+1);
+      current=nextWorkingDay(e);
+    });
+
+    html+="</div>";
+    result.innerHTML=html;
+    return;
+  }
+
+  let current = new Date(pivotDate);
+  let beforeHTML="";
+
+  for(let i=pivotIndex-1;i>=0;i--){
+    if(!document.getElementById(`check-${i}`).checked) continue;
+
+    let d=parseInt(document.getElementById(`days-${i}`).value);
+    let team=document.getElementById(`team-${i}`).value;
+
+    let end=new Date(current);
+    end.setDate(end.getDate()-1);
+
+    let start=new Date(end);
+    let c=0;
+
+    while(c<d){
+      if(!isBlocked(start)) c++;
+      if(c<d) start.setDate(start.getDate()-1);
+    }
+
+    beforeHTML = `
+    <div class="row">
+      <div class="left">${taskList[i].name}</div>
+      <div class="center">${formatRange(start,end)}</div>
+      <div class="right">${team}</div>
+    </div>` + beforeHTML;
+
+    current=new Date(start);
+  }
+
+  let pivotTeam = document.getElementById(`team-${pivotIndex}`).value;
+
+  let pivotHTML = `
+  <div class="row">
+    <div class="left">${taskList[pivotIndex].name}</div>
+    <div class="center">${formatDate(pivotDate)}</div>
+    <div class="right">${pivotTeam}</div>
+  </div>`;
+
+  let afterHTML="";
+  current = new Date(pivotDate);
+  current.setDate(current.getDate()+1);
+  current = nextWorkingDay(current);
+
+  for(let i=pivotIndex+1;i<taskList.length;i++){
+    if(!document.getElementById(`check-${i}`).checked) continue;
 
     let d=parseInt(document.getElementById(`days-${i}`).value);
     let team=document.getElementById(`team-${i}`).value;
 
     let s=new Date(current);
     let e=new Date(current);
-
     let c=0;
+
     while(c<d){
-      if(!isWeekend(e)) c++;
+      if(!isBlocked(e)) c++;
       if(c<d) e.setDate(e.getDate()+1);
     }
 
-    html+=`
+    afterHTML += `
     <div class="row">
-      <div class="left">${t.name}</div>
+      <div class="left">${taskList[i].name}</div>
       <div class="center">${formatRange(s,e)}</div>
       <div class="right">${team}</div>
     </div>`;
 
     e.setDate(e.getDate()+1);
     current=nextWorkingDay(e);
-  });
+  }
 
-  html+="</div>";
+  html += beforeHTML + pivotHTML + afterHTML + "</div>";
   result.innerHTML=html;
 }
 
@@ -288,7 +489,7 @@ function generatePDF(){
   win.document.close();
   win.print();
 }
-
+ 
 </script>
 
 </body>
