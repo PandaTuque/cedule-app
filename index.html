@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Cédule Chantier</title>
+
+<style>
+body { font-family: Arial; padding:20px; }
+
+.header { margin-bottom:15px; }
+
+.row {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  border-bottom:1px solid #ccc;
+  padding:6px 0;
+}
+
+.left { width:40%; }
+.center { width:30%; text-align:center; }
+.right { width:30%; text-align:right; }
+
+.task { margin-bottom:8px; }
+
+/* 🔥 FIX PDF */
+@media print {
+  body { zoom:0.75; }
+
+  .row {
+    display:flex !important;
+    flex-direction:row !important;
+  }
+
+  div {
+    page-break-inside: avoid;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<h2>ÉCHÉANCIER DES TRAVAUX</h2>
+
+<div class="header">
+Projet: <input id="projectName"><br>
+Client: <input id="client"><br>
+Adresse: <input id="adresse"><br>
+
+Chargé de projet:
+<select id="pmSelect"></select>
+<input id="newPM">
+<button onclick="addPM()">+</button>
+
+Téléphone: <input id="telephone"><br>
+
+Franchise:
+<select id="franchise">
+<option>Oui</option><option>Non</option>
+</select>
+
+Cadenas:
+<select id="cadenas">
+<option>Oui</option><option>Non</option>
+</select>
+</div>
+
+Date début: <input type="date" id="startDate"><br><br>
+
+<h3>Corps de métier</h3>
+
+<div id="tasks"></div>
+
+<input id="newTaskName" placeholder="Ajouter métier">
+<input id="newTaskDays" type="number" placeholder="jours" style="width:60px;">
+<button onclick="addTask()">Ajouter</button>
+
+<br><br>
+
+<button onclick="generateSchedule()">Générer</button>
+<button onclick="generatePDF()">PDF</button>
+
+<div id="result"></div>
+
+<script>
+
+// ===== MÉMOIRE =====
+let savedPM = JSON.parse(localStorage.getItem("pm")) || ["Steven Benoit","Richard Jenne"];
+let savedTasks = JSON.parse(localStorage.getItem("customTasks")) || [];
+
+// ===== PM =====
+function loadPM(){
+  pmSelect.innerHTML = savedPM.map(x=>`<option>${x}</option>`).join("");
+}
+loadPM();
+
+function addPM(){
+  let v = newPM.value.trim();
+  if(v && !savedPM.includes(v)){
+    savedPM.push(v);
+    localStorage.setItem("pm", JSON.stringify(savedPM));
+    loadPM();
+  }
+}
+
+// ===== DATE =====
+function formatDate(d){
+  const m=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+  return d.getDate()+" "+m[d.getMonth()];
+}
+
+function formatRange(s,e){
+  if(s.toDateString()==e.toDateString()) return formatDate(s);
+  return s.getDate()+" au "+e.getDate()+" "+formatDate(e).split(" ")[1];
+}
+
+function isWeekend(d){ return d.getDay()==0||d.getDay()==6; }
+
+function nextWorkingDay(d){
+  let date=new Date(d);
+  while(isWeekend(date)){ date.setDate(date.getDate()+1); }
+  return date;
+}
+
+// ===== TASKS =====
+let baseTasks = [
+{name:"Contenu - Emballage",days:1,teams:["Mpe sinistre","Dégado"]},
+{name:"Contenu - Sortie",days:1,teams:["Demenagement expert","Dégado"]},
+{name:"Démo / protection",days:1,teams:["Mpe sinistre","Mpe construction","Dégado"]},
+{name:"Débranchement plomberie",days:1,teams:["Mpe plomberie"]},
+{name:"Traitement / assèchement",days:1,teams:["Mpe sinistre","Dégado"]},
+{name:"Reconstruction",days:2,teams:["MPE Construction"]},
+{name:"Plancher",days:2,teams:["MPE Construction","Couture plancher","Plancher Vn"]},
+{name:"Joints",days:4,teams:["Alain Cadorette","Yoland G"]},
+{name:"Peinture",days:1,teams:["Max Peinture JL"]},
+{name:"Finition",days:1,teams:["MPE Construction"]},
+{name:"Rebranchement plomberie",days:1,teams:["Mpe plomberie"]},
+{name:"Rebranchement électricité",days:1,teams:["Samuel Poulin","Bissonnette"]},
+{name:"Ménage",days:1,teams:["Mpe sinistre","Dégado"]},
+{name:"Contenu - Replacement",days:1,teams:["Demenagement expert","Dégado"]},
+{name:"Contenu - Déballage",days:1,teams:["Demenagement expert","Dégado"]}
+];
+
+let taskList = [...baseTasks, ...savedTasks];
+
+// ===== UI =====
+const container=document.getElementById("tasks");
+
+function renderTasks(){
+  container.innerHTML="";
+
+  taskList.forEach((t,i)=>{
+
+    let teamOptions = t.teams.map(x=>`<option>${x}</option>`).join("");
+
+    container.innerHTML+=`
+    <div class="task">
+      <input type="checkbox" id="check-${i}" checked>
+      ${t.name}
+      <input type="number" id="days-${i}" value="${t.days}" style="width:50px;">
+      <select id="team-${i}">
+        ${teamOptions}
+      </select>
+      <input id="newTeam-${i}" placeholder="+">
+      <button onclick="addTeam(${i})">+</button>
+    </div>`;
+  });
+}
+renderTasks();
+
+// ===== ADD TEAM =====
+function addTeam(i){
+  let input=document.getElementById(`newTeam-${i}`);
+  let select=document.getElementById(`team-${i}`);
+
+  let val=input.value.trim();
+  if(val){
+    let option=document.createElement("option");
+    option.text=val;
+    select.add(option);
+    select.value=val;
+    input.value="";
+  }
+}
+
+// ===== ADD TASK =====
+function addTask(){
+  let name=newTaskName.value.trim();
+  let days=parseInt(newTaskDays.value);
+
+  if(!name || !days) return;
+
+  let newT={name:name,days:days,teams:[]};
+  savedTasks.push(newT);
+
+  localStorage.setItem("customTasks", JSON.stringify(savedTasks));
+
+  taskList.push(newT);
+  renderTasks();
+
+  newTaskName.value="";
+  newTaskDays.value="";
+}
+
+// ===== GÉNÉRER =====
+function generateSchedule(){
+
+  let current=nextWorkingDay(new Date(startDate.value+"T00:00:00"));
+
+  let html=`<div id="pdfContent">`;
+
+  html+=`
+  <b>Projet:</b> ${projectName.value}<br>
+  <b>Client:</b> ${client.value}<br>
+  <b>Adresse:</b> ${adresse.value}<br>
+
+  <div style="display:flex; justify-content:space-between;">
+    <div><b>Chargé de projet:</b> ${pmSelect.value}</div>
+    <div><b>Téléphone:</b> ${telephone.value}</div>
+  </div>
+
+  <b>Franchise:</b> ${franchise.value}<br>
+  <b>Cadenas:</b> ${cadenas.value}<br><br>
+  `;
+
+  taskList.forEach((t,i)=>{
+    if(!document.getElementById(`check-${i}`).checked) return;
+
+    let d=parseInt(document.getElementById(`days-${i}`).value);
+    let team=document.getElementById(`team-${i}`).value;
+
+    let s=new Date(current);
+    let e=new Date(current);
+
+    let c=0;
+    while(c<d){
+      if(!isWeekend(e)) c++;
+      if(c<d) e.setDate(e.getDate()+1);
+    }
+
+    html+=`
+    <div class="row">
+      <div class="left">${t.name}</div>
+      <div class="center">${formatRange(s,e)}</div>
+      <div class="right">${team}</div>
+    </div>`;
+
+    e.setDate(e.getDate()+1);
+    current=nextWorkingDay(e);
+  });
+
+  html+="</div>";
+  result.innerHTML=html;
+}
+
+// ===== PDF =====
+function generatePDF(){
+  let win=window.open("","_blank");
+
+  win.document.write(`
+    <html>
+    <head>
+    <style>
+      body { font-family: Arial; padding:20px; }
+      .row {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        border-bottom:1px solid #ccc;
+        padding:6px 0;
+      }
+      .left { width:40%; }
+      .center { width:30%; text-align:center; }
+      .right { width:30%; text-align:right; }
+
+      @media print {
+        body { zoom:0.75; }
+      }
+    </style>
+    </head>
+    <body>
+    ${document.getElementById("pdfContent").innerHTML}
+    </body>
+    </html>
+  `);
+
+  win.document.close();
+  win.print();
+}
+
+</script>
+
+</body>
+</html>
