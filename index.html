@@ -499,27 +499,50 @@ function generateSchedule(){
 
 // ===== PDF =====
 function generatePDF(){
-  let clone = document.getElementById("pdfContent").cloneNode(true);
+  let source = document.getElementById("pdfContent");
+  if(!source){
+    alert("Génère la cédule avant d'ouvrir le PDF.");
+    return;
+  }
+
+  let clone = source.cloneNode(true);
 
   clone.querySelectorAll("input[type='date']").forEach(input => {
     let days = parseInt(input.dataset.days, 10) || 1;
-
-    let start = new Date(input.value + "T00:00:00");
-    let end = calcEndFromStart(start, days);
-
     let span = document.createElement("span");
-    span.textContent = days === 1 ? formatDate(start) : formatRange(start, end);
+
+    if(input.value){
+      let start = new Date(input.value + "T00:00:00");
+      let end = calcEndFromStart(start, days);
+      span.textContent = days === 1 ? formatDate(start) : formatRange(start, end);
+    } else {
+      span.textContent = "";
+    }
 
     input.replaceWith(span);
   });
 
   let win = window.open("", "_blank");
+  if(!win){
+    alert("Autorise les pop-up pour le PDF.");
+    return;
+  }
 
   win.document.write(`
     <html>
     <head>
     <style>
       body { font-family: Arial; padding:20px; }
+
+      .toolbar {
+        margin-bottom:15px;
+      }
+
+      .toolbar button {
+        padding:8px 12px;
+        margin-right:10px;
+      }
+
       .row {
         display:flex;
         justify-content:space-between;
@@ -527,22 +550,30 @@ function generatePDF(){
         border-bottom:1px solid #ccc;
         padding:6px 0;
       }
+
       .left { width:40%; }
       .center { width:30%; text-align:center; }
       .right { width:30%; text-align:right; }
 
       @media print {
+        .toolbar { display:none; }
         body { zoom:0.75; }
       }
     </style>
     </head>
     <body>
-    ${clone.innerHTML}
+      <div class="toolbar">
+        <button onclick="window.print()">Imprimer / PDF</button>
+        <button onclick="window.close()">Retour</button>
+      </div>
+
+      ${clone.innerHTML}
     </body>
     </html>
   `);
 
   win.document.close();
+  win.focus();
   win.print();
 }
   
