@@ -151,7 +151,7 @@ function formatRange(s,e){
 function isHoliday(d){
   const holidays = [
     "2026-01-01","2026-04-03","2026-04-06","2026-05-18","2026-06-24","2026-07-01",
-    "2026-09-07","2026-10-12""2026-11-11","2026-12-25",
+    "2026-09-07","2026-10-12","2026-11-11","2026-12-25"
   ];
   return holidays.includes(d.toISOString().split("T")[0]);
 }
@@ -186,7 +186,7 @@ let baseTasks = [
 {name:"Traitement / assèchement",days:1,teams:["Mpe sinistre","Dégado"]},
 {name:"Reconstruction",days:2,teams:["Mpe Construction"]},
 {name:"Plancher",days:2,teams:["Mpe construction","Couture plancher","Plancher Vn","Stephane G"]},
-{name:"Joints",days:4,teams:["Alain Cadorette","Yoland G"],"Stephane G"},
+{name:"Joints",days:4,teams:["Alain Cadorette","Yoland G","Stephane G"]},
 {name:"Peinture",days:1,teams:["Peinture JL","Yoland G","Stephane G"]},
 {name:"Ebenisterie",days:1,teams:["Cabix"]},
 {name:"Finition",days:1,teams:["Mpe construction","Yoland G","Stephane G"]},
